@@ -8,12 +8,18 @@ from typing import Any
 
 from app.seed import SEED_ROWS
 
+# 纳入在册台数统计的设备类模块（物理设备才按“台”计数）。
+EQUIPMENT_MODULES = ("boiler", "vessel", "pressurepipe", "crane", "elevator", "forklift")
+
 
 class Store:
     def __init__(self) -> None:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
+        # 既有历史锅炉数据保留登记当时的口径：只做展示与流转，不因校验口径调整被重新判定。
+        for row in self._tables.get("boiler", []):
+            row.setdefault("校验口径版本", "历史口径")
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)
@@ -40,6 +46,14 @@ class Store:
         cards = [
             {"label": "业务模块", "value": len(modules)},
             {"label": "今日新增", "value": sum(int(item["created"]) for item in modules)},
+            {
+                "label": "在册台数",
+                "value": sum(
+                    len(rows)
+                    for name, rows in self._tables.items()
+                    if name in EQUIPMENT_MODULES
+                ),
+            },
             {"label": "待处理", "value": sum(int(item["pending"]) for item in modules)},
             {"label": "异常量", "value": sum(int(item["abnormal"]) for item in modules)},
         ]

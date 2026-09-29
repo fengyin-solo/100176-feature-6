@@ -1,4 +1,4 @@
-"""锅炉设备接口：维护锅炉设备，覆盖办理投用、安排检修、报废设备等动作。"""
+"""锅炉设备接口：维护锅炉设备，覆盖登记、办理投用、安排检修、报废设备等动作。"""
 from __future__ import annotations
 
 from typing import Any
@@ -30,6 +30,12 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/validation-rule", response_model=dict)
+def validation_rule() -> dict[str, Any]:
+    """返回锅炉登记的校验口径（阈值与必填项），供登记入口展示。"""
+    return service.current_rule()
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条锅炉设备明细；不存在时给出可读的错误说明。"""
@@ -41,10 +47,10 @@ def get_entry(entry_id: int) -> dict:
 
 @router.post("", response_model=ActionResult)
 def create_entry(payload: EntryPayload) -> ActionResult:
-    """登记一条锅炉设备，缺字段时说明原因而不是静默丢弃。"""
-    entry, missing = service.create_entry(payload.values)
-    if missing:
-        return ActionResult(ok=False, message=f"缺少必填字段：{'、'.join(missing)}")
+    """登记一条锅炉设备：按校验规则逐项检查，不通过时拦下并说明原因。"""
+    entry, errors = service.create_entry(payload.values)
+    if errors:
+        return ActionResult(ok=False, message="登记未通过校验：" + "；".join(errors))
     return ActionResult(ok=True, message="锅炉设备已登记", entry=entry)
 
 
