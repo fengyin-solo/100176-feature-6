@@ -1,4 +1,4 @@
-"""锅炉设备接口：维护锅炉设备，覆盖办理投用、安排检修、报废设备等动作。"""
+"""锅炉设备接口：维护锅炉设备，覆盖登记、办理投用、安排检修、报废设备等动作。"""
 from __future__ import annotations
 
 from typing import Any
@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 
 from app.schemas import ActionResult, EntryPayload, PageResult
-from app.services.boiler import BoilerService
+from app.services.boiler import CURRENT_RULE, REQUIRED_FIELDS, BoilerService
 
 router = APIRouter(prefix="/api/boiler", tags=["锅炉设备"])
 
@@ -30,6 +30,23 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/rule")
+def current_rule() -> dict[str, Any]:
+    """现行登记校验口径：登记表单按它提示阈值；历史数据仍按各自登记时的版本留存。"""
+    return {
+        "version": CURRENT_RULE.version,
+        "max_pressure_mpa": CURRENT_RULE.max_pressure_mpa,
+        "required_fields": REQUIRED_FIELDS,
+    }
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出锅炉设备清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "boiler", "total": total, "items": items}
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条锅炉设备明细；不存在时给出可读的错误说明。"""
@@ -41,10 +58,10 @@ def get_entry(entry_id: int) -> dict:
 
 @router.post("", response_model=ActionResult)
 def create_entry(payload: EntryPayload) -> ActionResult:
-    """登记一条锅炉设备，缺字段时说明原因而不是静默丢弃。"""
-    entry, missing = service.create_entry(payload.values)
-    if missing:
-        return ActionResult(ok=False, message=f"缺少必填字段：{'、'.join(missing)}")
+    """登记一条锅炉设备：必填缺失、编号重复、压力超阈值按同一条判定规则拦下并说明原因。"""
+    entry, problems = service.create_entry(payload.values)
+    if problems:
+        return ActionResult(ok=False, message="；".join(problems))
     return ActionResult(ok=True, message="锅炉设备已登记", entry=entry)
 
 
@@ -56,10 +73,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出锅炉设备清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "boiler", "total": total, "items": items}
